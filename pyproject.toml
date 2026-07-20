@@ -1,0 +1,47 @@
+[project]
+name = "isambard-onboarding-sample"
+version = "0.1.0"
+description = "Minimal LLM inference environment for Isambard (NVIDIA GH200 / ARM aarch64)"
+requires-python = ">=3.12"
+
+dependencies = [
+    # --- core inference ---
+    "torch>=2.13.0",
+    "transformers>=4.57.0",
+    "accelerate>=1.0.0",      # required for device_map="auto"
+    "safetensors>=0.4.0",
+    "einops>=0.8.0",          # not needed by the native path; kept so the
+                              # checkpoint's bundled remote code also imports
+    "sentencepiece>=0.2.0",
+    "protobuf>=5.0.0",
+
+    # --- notebook support ---
+    "ipykernel>=6.29.0",      # the kernel VS Code notebooks talk to
+    "jupyterlab>=4.2.0",      # standalone `jupyter lab`
+    "notebook>=7.2.0",
+    "ipywidgets>=8.1.0",      # tqdm/HF progress bars render instead of spamming text
+]
+
+# ---------------------------------------------------------------------------
+# THE SINGLE MOST IMPORTANT BLOCK IN THIS FILE
+#
+# Isambard's CPUs are ARM (aarch64 Grace). PyPI's default `torch` for
+# linux-aarch64 is the CPU-ONLY build: it targets Graviton/Jetson, ships no
+# CUDA, and pins to an old release. It installs without a single warning and
+# then reports torch.cuda.is_available() == False on a node with four
+# H100-class GPUs.
+#
+# There is no error message. You just silently get no GPU.
+#
+# Pinning torch (and only torch) to the CUDA index below forces the
+# CUDA-enabled aarch64 build. cu126 matches the cuda/12.6 module and the
+# installed driver. `explicit = true` means ONLY torch comes from this index;
+# everything else still resolves from PyPI.
+# ---------------------------------------------------------------------------
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true

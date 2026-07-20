@@ -1,0 +1,9 @@
+# Written by setup_environment.sh; contains machine-specific absolute paths.
+env.sh
+
+.venv/
+uv.lock.bak
+logs/*
+!logs/.gitkeep
+__pycache__/
+.ipynb_checkpoints/
