@@ -24,7 +24,6 @@ Setup comes **first**: `tunnel.sbatch` runs the VS Code CLI that
 
 ```bash
 # 1. On a LOGIN node. GPU checks are skipped here (login nodes have none).
-export PROJECT_STORAGE=/projects/<your-project>/<your-space>
 bash setup_environment.sh
 
 # 2. Get a compute node
@@ -35,19 +34,21 @@ tail -f logs/code_tunnel_<JOB_ID>.out      # prints a GitHub device code
 #    https://vscode.dev/tunnel/<name> URL from that log
 
 # 4. In a terminal ON THE COMPUTE NODE, verify the GPUs
-source env.sh && bash setup_environment.sh
+bash setup_environment.sh
 
 # 5. Open llm_playground.ipynb, select the .venv kernel, run all
 ```
 
 `scancel <JOB_ID>` when done (`squeue --me` to find it).
 
-**`export` `PROJECT_STORAGE` — don't just prefix it.** A command-scoped
-`PROJECT_STORAGE=... bash setup_environment.sh` is gone the moment that command
-returns, so `sbatch` would never see it. It falls back to `$PROJECTDIR`, then
-`$HOME` — and home is a trap, not a default: quotas are typically under 10 GB
-free against a 230 GiB model. `tunnel.sbatch` refuses to start rather than fill
-your home directory.
+Everything defaults to the usual locations under `$HOME`, which is fine for the
+environment itself. **The model is not** — the 120B checkpoint is ~230 GiB and
+will not fit a typical Isambard home quota, so if you have project storage,
+point HuggingFace at it first:
+
+```bash
+export HF_HOME=/projects/<your-project>/<your-space>/hf
+```
 
 ## The four things that catch people
 

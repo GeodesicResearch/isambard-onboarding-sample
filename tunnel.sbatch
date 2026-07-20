@@ -84,37 +84,6 @@ unset NCCL_NET NCCL_SOCKET_IFNAME NCCL_NET_GDR_LEVEL NCCL_COLLNET_ENABLE \
       NCCL_ASYNC_ERROR_HANDLING FI_PROVIDER FI_MR_CACHE_MONITOR \
       FI_CXI_DISABLE_HOST_REGISTER 2>/dev/null || true
 
-# --- Storage ---------------------------------------------------------------
-# Resolved AFTER `module reset`, because that is what populates PROJECTDIR.
-#
-# First, adopt the settings setup_environment.sh worked out. A command-scoped
-# `PROJECT_STORAGE=... bash setup_environment.sh` does NOT survive into this
-# job, so without this the job would silently fall back to $HOME -- and home
-# quotas here are single-digit GB free against a 230 GiB model.
-if [[ -f "${SLURM_SUBMIT_DIR:-.}/env.sh" ]]; then
-    # shellcheck disable=SC1091
-    source "${SLURM_SUBMIT_DIR:-.}/env.sh"
-    echo "sourced $SLURM_SUBMIT_DIR/env.sh"
-fi
-
-# Same three-tier resolution as setup_environment.sh and the notebook.
-PROJECT_STORAGE="${PROJECT_STORAGE:-${PROJECTDIR:-$HOME}}"
-export PROJECT_STORAGE
-export HF_HOME="${HF_HOME:-$PROJECT_STORAGE/hf}"
-
-# Refuse to point a hundreds-of-GB model cache at home. Failing here costs a
-# queue slot; filling home costs a great deal more.
-case "$HF_HOME" in
-  "$HOME"/*|"$HOME")
-    echo "ERROR: HF_HOME resolves under \$HOME ($HF_HOME)." >&2
-    echo "Home quotas are small and the model is ~230 GiB." >&2
-    echo "Run setup_environment.sh with PROJECT_STORAGE exported, e.g.:" >&2
-    echo "    export PROJECT_STORAGE=/projects/<your-project>/<your-space>" >&2
-    echo "    bash setup_environment.sh    # writes env.sh, which this job reads" >&2
-    exit 1
-    ;;
-esac
-
 # --- Preflight ------------------------------------------------------------
 # The VS Code CLI rejects names containing dots (and other punctuation), and
 # Isambard usernames are of the form <name>.<project> -- so "isambard-$USER"
@@ -133,10 +102,10 @@ if [[ ! -x "$VSCODE_CLI" ]]; then
     exit 1
 fi
 
-# Isolate the VS Code CLI's state per tunnel. Two tunnels sharing one data
-# directory fight over tunnel-stable.lock and the second silently never comes
-# up. Keeping it off home also avoids the small home quota.
-export VSCODE_CLI_DATA_DIR="${VSCODE_CLI_DATA_DIR:-$PROJECT_STORAGE/vscode_cli/$USER/$TUNNEL_NAME}"
+# Isolate the VS Code CLI's state per tunnel: two tunnels sharing one data
+# directory fight over tunnel-stable.lock, and the second silently never
+# comes up.
+export VSCODE_CLI_DATA_DIR="${VSCODE_CLI_DATA_DIR:-$HOME/.vscode_cli_data/$TUNNEL_NAME}"
 mkdir -p "$VSCODE_CLI_DATA_DIR"
 
 echo "==============================================================="
@@ -145,7 +114,6 @@ echo " Node     : $(hostname)"
 echo " Job ID   : ${SLURM_JOB_ID:-<none>}"
 echo " GPUs     : $(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)"
 echo " Data dir : $VSCODE_CLI_DATA_DIR"
-echo " HF cache : $HF_HOME"
 echo ""
 echo " Watch this file for the GitHub device code, then connect at:"
 echo "   https://vscode.dev/tunnel/$TUNNEL_NAME"
