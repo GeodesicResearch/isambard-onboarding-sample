@@ -85,17 +85,37 @@ unset NCCL_NET NCCL_SOCKET_IFNAME NCCL_NET_GDR_LEVEL NCCL_COLLNET_ENABLE \
 # ===========================================================================
 # 2. Model cache
 # ===========================================================================
-# Everything defaults to the usual places under $HOME, which is fine for the
-# environment itself (a few GB).
+# $HOME has a 100 GiB quota and the 120B checkpoint is ~230 GiB, so the cache
+# cannot live there. You do not have to look up your project code -- the BriCS
+# default modules export the right paths, so we pick one automatically:
 #
-# The MODEL is not a few GB -- the 120B checkpoint is ~230 GiB, which will not
-# fit in a typical Isambard home quota. If you have project storage, point
-# HuggingFace at it before running this:
+#   $SCRATCH     5 TiB, per USER. Preferred: it does not consume your project's
+#                shared quota. Not purged on Isambard-AI; note that on
+#                Isambard 3, files unread for 60 days are deleted.
+#   $PROJECTDIR  20-200 TiB, shared with everyone on your project.
 #
-#     export HF_HOME=/projects/<your-project>/<your-space>/hf
-#
-# Otherwise the download fails partway through with a quota error.
-echo "[3/6] HF_HOME: ${HF_HOME:-<default: ~/.cache/huggingface>}"
+# The group fallback covers a shell with no modules loaded: project directories
+# are group-owned `brics.<code>`, so your own code is derivable from `id`.
+# Override any of this by exporting HF_HOME yourself before running.
+if [[ -z "${HF_HOME:-}" ]]; then
+    for _cand in "${SCRATCH:-}" "${SCRATCHDIR:-}" "${PROJECTDIR:-}"; do
+        if [[ -n "$_cand" && -w "$_cand" ]]; then export HF_HOME="$_cand/hf"; break; fi
+    done
+fi
+if [[ -z "${HF_HOME:-}" ]]; then
+    _code="$(id -Gn 2>/dev/null | tr ' ' '\n' | grep -m1 '^brics\.' | cut -d. -f2 || true)"
+    if [[ -n "$_code" && -w "/projects/$_code" ]]; then export HF_HOME="/projects/$_code/hf"; fi
+fi
+
+if [[ -n "${HF_HOME:-}" ]]; then
+    echo "[3/6] model cache: $HF_HOME"
+    mkdir -p "$HF_HOME"
+else
+    echo "[3/6] model cache: could not find project storage; falling back to \$HOME"
+    echo "      WARNING: \$HOME is capped at 100 GiB and the model is ~230 GiB."
+    echo "      The download will fail on quota. Set HF_HOME to somewhere larger:"
+    echo "          export HF_HOME=/projects/<your-project>/hf"
+fi
 mkdir -p logs
 
 # ===========================================================================

@@ -41,14 +41,23 @@ bash setup_environment.sh
 
 `scancel <JOB_ID>` when done (`squeue --me` to find it).
 
-Everything defaults to the usual locations under `$HOME`, which is fine for the
-environment itself. **The model is not** — the 120B checkpoint is ~230 GiB and
-will not fit a typical Isambard home quota, so if you have project storage,
-point HuggingFace at it first:
+### Where the model gets cached
 
-```bash
-export HF_HOME=/projects/<your-project>/<your-space>/hf
-```
+You don't have to look this up — the setup script and the notebook both work it
+out. `$HOME` is capped at **100 GiB** and the checkpoint is ~230 GiB, so the
+cache has to go elsewhere, and Isambard already tells you where:
+
+| | Quota | Scope | Purge |
+|---|---|---|---|
+| `$SCRATCH` | 5 TiB | per **user** | none on Isambard-AI; 60 days unread on Isambard 3 |
+| `$PROJECTDIR` | 20–200 TiB | shared with your project | none |
+
+Both are exported by the BriCS default modules, so the resolution is just
+`$SCRATCH` → `$PROJECTDIR` → derive from your `brics.<code>` group (project
+directories are group-owned, so it works even with no modules loaded).
+`$SCRATCH` is preferred because it doesn't consume your project's shared quota.
+
+Override it any time by exporting `HF_HOME` yourself before you start.
 
 ## The four things that catch people
 
