@@ -69,11 +69,8 @@ cat <<EOF
  node     : $(hostname)
  endpoint : $ENDPOINT   (written to endpoint.txt)
 
- Wait for "Application startup complete", then, from another terminal:
-   open llm_playground.ipynb  (kernel: .venv-eval), or
-   ISAMBARD_BASE_URL=$ENDPOINT ISAMBARD_API_KEY=dummy \\
-     .venv-eval/bin/inspect eval inspect_evals/gsm8k \\
-     --model openai-api/isambard/$SERVED_NAME --limit 10
+ Wait for "Application startup complete", then, from another terminal,
+ open llm_playground.ipynb and pick the .venv kernel.
 
  Stop the server with Ctrl-C.
 ===============================================================

@@ -12,7 +12,7 @@ adding an evaluation layer on top.
 ```
 setup_login_node.sh     (login node)   uv + the VS Code CLI
 tunnel.sbatch           (login node)   interactive VS Code session on a compute node
-setup_compute_node.sh   (compute node) the GPU env: vLLM + Inspect venvs
+setup_compute_node.sh   (compute node) the GPU env: vLLM + Inspect in one venv
 serve_vllm.sh           (compute node) serve gpt-oss-120b as an OpenAI endpoint
 llm_playground.ipynb    (compute node) point Inspect at that endpoint and evaluate
 ```
@@ -34,15 +34,13 @@ llm_playground.ipynb   →  a thin client: Inspect sends eval requests, scores
 ```
 
 The ~4-minute model load is paid once by the server, so you can iterate on
-prompts and evals interactively against a resident model. They are also in
-**separate venvs** — the serving and evaluation stacks have incompatible
-dependencies (vLLM pins an older `huggingface-hub` than `inspect-evals` wants),
-which is fine precisely because they only talk HTTP:
+prompts and evals interactively against a resident model.
 
-```
-.venv        vLLM        (serve_vllm.sh)
-.venv-eval   Inspect     (the notebook's kernel, and `inspect eval`)
-```
+Both live in a single `.venv`. That works because the notebook uses
+`inspect-ai` (the framework) but not `inspect-evals` (its canned-benchmark
+library, which pins a newer `huggingface-hub` than vLLM 0.15.1 allows) — the
+notebook defines its GSM8K task inline instead, which shows more of how Inspect
+works anyway.
 
 ## Quick start
 
@@ -58,21 +56,17 @@ tail -f logs/code_tunnel_<JOB_ID>.out   # GitHub device code, then a vscode.dev 
 Connect to the tunnel, then in a terminal on the compute node:
 
 ```bash
-# 3. Build the GPU environment (two venvs). Needs the compute node's driver.
+# 3. Build the GPU environment (one venv). Needs the compute node's driver.
 bash setup_compute_node.sh
 
 # 4. Serve the model (foreground -- keep this terminal open, or use tmux).
 bash serve_vllm.sh                      # wait for "Application startup complete"
-
-# 5. From ANOTHER terminal, run the evals:
-export ISAMBARD_BASE_URL=$(cat endpoint.txt) ISAMBARD_API_KEY=dummy
-.venv-eval/bin/inspect eval inspect_evals/gsm8k \
-    --model openai-api/isambard/gpt-oss-120b --limit 10
 ```
 
-Or open `llm_playground.ipynb` and pick the **`.venv-eval`** kernel. Stop the
-server with Ctrl-C when you are done — it holds four GPUs and the cluster runs
-near capacity.
+Then, from **another terminal** on the compute node, open
+`llm_playground.ipynb` and pick the **`.venv`** kernel to run the evaluations.
+Stop the server with Ctrl-C when you are done — it holds four GPUs and the
+cluster runs near capacity.
 
 ## The traps that catch people
 
