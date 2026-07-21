@@ -4,6 +4,7 @@
 uv.lock.bak
 logs/*
 !logs/.gitkeep
+!logs/example_code_tunnel_logs.out
 __pycache__/
 .ipynb_checkpoints/
 endpoint.txt

@@ -105,6 +105,6 @@ cat <<EOF
 === done ===
 Next (on this compute node):
   bash serve_vllm.sh                # serve gpt-oss-120b; writes endpoint.txt
-  # then, from another terminal, open llm_playground.ipynb (.venv kernel)
+  # then, from another terminal, open isambard_interactive_inference.ipynb (.venv kernel)
 EOF
 { [[ $rc -ne 0 || $rc2 -ne 0 ]]; } && { echo "SETUP FAILED" >&2; exit 1; } || true

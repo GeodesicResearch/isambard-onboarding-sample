@@ -70,7 +70,7 @@ cat <<EOF
  endpoint : $ENDPOINT   (written to endpoint.txt)
 
  Wait for "Application startup complete", then, from another terminal,
- open llm_playground.ipynb and pick the .venv kernel.
+ open isambard_interactive_inference.ipynb and pick the .venv kernel.
 
  Stop the server with Ctrl-C.
 ===============================================================

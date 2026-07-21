@@ -14,7 +14,9 @@ setup_login_node.sh     (login node)   uv + the VS Code CLI
 tunnel.sbatch           (login node)   interactive VS Code session on a compute node
 setup_compute_node.sh   (compute node) the GPU env: vLLM + Inspect in one venv
 serve_vllm.sh           (compute node) serve gpt-oss-120b as an OpenAI endpoint
-llm_playground.ipynb    (compute node) point Inspect at that endpoint and evaluate
+isambard_interactive_inference.ipynb
+                        (compute node) point Inspect at that endpoint and evaluate
+teardown.sh             delete the venv + runtime logs, back to a fresh checkout
 ```
 
 Setup is split by where it runs: `setup_login_node.sh` needs only the network,
@@ -29,7 +31,7 @@ Two pieces, deliberately separate:
 bash serve_vllm.sh     →  runs in the foreground on a compute node: vLLM holds
                           the model on the GPUs and exposes an HTTP endpoint
                                         ↕ HTTP
-llm_playground.ipynb   →  a thin client: Inspect sends eval requests, scores
+isambard_interactive_inference.ipynb   →  a thin client: Inspect sends eval requests, scores
                           the replies. Never touches a GPU.
 ```
 
@@ -64,7 +66,7 @@ bash serve_vllm.sh                      # wait for "Application startup complete
 ```
 
 Then, from **another terminal** on the compute node, open
-`llm_playground.ipynb` and pick the **`.venv`** kernel to run the evaluations.
+`isambard_interactive_inference.ipynb` and pick the **`.venv`** kernel to run the evaluations.
 Stop the server with Ctrl-C when you are done — it holds four GPUs and the
 cluster runs near capacity.
 

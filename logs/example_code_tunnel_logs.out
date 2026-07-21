@@ -1,0 +1,31 @@
+############## Note that this log is a static example ##############
+############## Note that this log is a static example ##############
+############## Note that this log is a static example ##############
+
+Starting VS Code tunnel: isambard-vscode-2
+Node: nid010652
+Job ID: 5709804
+
+Once authenticated, connect via:
+  https://vscode.dev/tunnel/isambard-vscode-2
+
+*
+* Visual Studio Code Server
+*
+* By using the software, you agree to
+* the Visual Studio Code Server License Terms (https://aka.ms/vscode-server-license) and
+* the Microsoft Privacy Statement (https://privacy.microsoft.com/en-US/privacystatement).
+*
+[2026-07-19 05:19:56] info Using GitHub for authentication, run `code tunnel user login --provider <provider>` option to change this.
+To grant access to the server, please log into https://github.com/login/device and use code 7194-65C3
+
+############## Note that this log is a static example ##############
+############## Note that this log is a static example ##############
+############## Note that this log is a static example ##############
+
+To grant access to the server, please log into https://github.com/login/device and use code 947A-EFB7
+
+  Visual Studio Code Tunnel v1.124.2
+
+  ➜  Tunnel:   isambard-vscode-2
+  ➜  Open:  https://vscode.dev/tunnel/isambard-vscode-2
