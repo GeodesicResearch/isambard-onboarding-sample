@@ -1,4 +1,7 @@
 .venv/
+.venv-eval/
+.venv.prev-*/
+.venv.old-*/
 uv.lock.bak
 logs/*
 !logs/.gitkeep

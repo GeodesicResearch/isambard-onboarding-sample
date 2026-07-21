@@ -1,129 +1,115 @@
 # Isambard onboarding sample
 
 A worked example for teams new to [Isambard](https://docs.isambard.ac.uk/):
-build a Python environment that actually sees the GPUs, get an interactive
-VS Code session on a compute node, and run a 120B LLM across the node's four
-GH200s.
+serve **gpt-oss-120b** on a GH200 node with **vLLM**, and evaluate it with the
+UK AISI [Inspect](https://inspect.aisi.org.uk/) framework — the way you would
+run a real evaluation.
+
+It builds directly on the official
+[distributed-inference tutorial](https://docs.isambard.ac.uk/user-documentation/tutorials/distributed-inference/),
+adding an evaluation layer on top.
 
 ```
-setup_environment.sh    uv + Python env + VS Code CLI, then verify
-pyproject.toml          dependencies (note the torch index pin)
+setup_environment.sh    uv venvs + vLLM + Inspect + VS Code CLI, then verify
+serve_vllm.sh           serve gpt-oss-120b as an OpenAI-compatible endpoint
+llm_playground.ipynb    point Inspect at that endpoint and run evaluations
 tunnel.sbatch           interactive VS Code session on a compute node
-llm_playground.ipynb    load Nemotron Super 120B across 4 GPUs and generate
 ```
 
-`llm_playground_executed.ipynb` is a real run on a 4×GH200 node — 111.5 s model
-load, three generations, zero errors — so you can see what success looks like
-before spending a queue slot. Its environment-check cell has since been fixed;
-every other code cell is unchanged, so those outputs still hold.
+## The shape of it
+
+Two pieces, deliberately separate:
+
+```
+bash serve_vllm.sh     →  runs in the foreground on a compute node: vLLM holds
+                          the model on the GPUs and exposes an HTTP endpoint
+                                        ↕ HTTP
+llm_playground.ipynb   →  a thin client: Inspect sends eval requests, scores
+                          the replies. Never touches a GPU.
+```
+
+The ~4-minute model load is paid once by the server, so you can iterate on
+prompts and evals interactively against a resident model. They are also in
+**separate venvs** — the serving and evaluation stacks have incompatible
+dependencies (vLLM pins an older `huggingface-hub` than `inspect-evals` wants),
+which is fine precisely because they only talk HTTP:
+
+```
+.venv        vLLM        (serve_vllm.sh)
+.venv-eval   Inspect     (the notebook's kernel, and `inspect eval`)
+```
 
 ## Quick start
 
-Setup comes **first**: `tunnel.sbatch` runs the VS Code CLI that
-`setup_environment.sh` installs.
-
 ```bash
-# 1. On a LOGIN node. GPU checks are skipped here (login nodes have none).
+# 1. On a LOGIN node -- build both venvs + install the VS Code CLI.
 bash setup_environment.sh
 
-# 2. Get a compute node
+# 2. Get an interactive session on a compute node.
 sbatch tunnel.sbatch
-tail -f logs/code_tunnel_<JOB_ID>.out      # prints a GitHub device code
-
-# 3. Authenticate at https://github.com/login/device, then open the
-#    https://vscode.dev/tunnel/<name> URL from that log
-
-# 4. In a terminal ON THE COMPUTE NODE, verify the GPUs
-bash setup_environment.sh
-
-# 5. Open llm_playground.ipynb, select the .venv kernel, run all
+tail -f logs/code_tunnel_<JOB_ID>.out   # GitHub device code, then a vscode.dev URL
 ```
 
-`scancel <JOB_ID>` when done (`squeue --me` to find it).
+Connect to the tunnel, then in a terminal on the compute node:
 
-### Where the model gets cached
+```bash
+# 3. Serve the model (foreground -- keep this terminal open, or use tmux).
+bash serve_vllm.sh                      # wait for "Application startup complete"
 
-You don't have to look this up — the setup script and the notebook both work it
-out. `$HOME` is capped at **100 GiB** and the checkpoint is ~230 GiB, so the
-cache has to go elsewhere, and Isambard already tells you where:
+# 4. From ANOTHER terminal, run the evals:
+export ISAMBARD_BASE_URL=$(cat endpoint.txt) ISAMBARD_API_KEY=dummy
+.venv-eval/bin/inspect eval inspect_evals/gsm8k \
+    --model openai-api/isambard/gpt-oss-120b --limit 10
+```
 
-| | Quota | Scope | Purge |
-|---|---|---|---|
-| `$SCRATCH` | 5 TiB | per **user** | none on Isambard-AI; 60 days unread on Isambard 3 |
-| `$PROJECTDIR` | 20–200 TiB | shared with your project | none |
+Or open `llm_playground.ipynb` and pick the **`.venv-eval`** kernel. Stop the
+server with Ctrl-C when you are done — it holds four GPUs and the cluster runs
+near capacity.
 
-Both are exported by the BriCS default modules, so the resolution is just
-`$SCRATCH` → `$PROJECTDIR` → derive from your `brics.<code>` group (project
-directories are group-owned, so it works even with no modules loaded).
-`$SCRATCH` is preferred because it doesn't consume your project's shared quota.
+## The traps that catch people
 
-Override it any time by exporting `HF_HOME` yourself before you start.
+**1. On ARM, your vLLM and PyTorch are probably the wrong build.** Isambard is
+aarch64 with a CUDA-12 driver. Plain `pip install vllm` / `torch` on aarch64
+now pulls **CUDA-13** wheels, which need a newer driver than the cluster has
+and die at runtime with `libcudart.so.13` — on four healthy GPUs, with no hint
+at install time. The install uses **`--torch-backend=auto`**, which detects the
+driver and picks a compatible torch (here 2.9.x +cu129), and pulls vLLM from
+its own wheel index. That one flag is the fix; it is straight from the official
+tutorial.
 
-## The four things that catch people
-
-**1. ARM means your PyTorch is probably wrong.** Isambard is aarch64, so plain
-`pip install torch` gives you either the **CPU-only** wheel — which reports
-`cuda.is_available() == False` next to four H100-class GPUs and raises no error
-— or a **CUDA 13** build needing a newer driver than the cluster has, which
-fails at runtime rather than install. `pyproject.toml` pins the cu126 index;
-`setup_environment.sh` checks for each case separately, since the fixes differ.
-
-**2. `LD_PRELOAD` survives `module purge`, and can't be fixed from inside a
-running process.** Job scripts here routinely export
+**2. `LD_PRELOAD` survives `module purge`, and can't be undone from inside a
+running process.** Isambard job scripts routinely export
 `LD_PRELOAD=/tools/brics/.../libnccl.so`, forcing the system NCCL ahead of the
-one bundled in the torch wheel; `import torch` then dies with
-`undefined symbol: ncclGetLsaMultimemDevicePointer`. It's an environment
-variable, not a module, so `module purge` won't clear it — and the loader
-applies it at `exec`, so deleting it from `os.environ` affects only child
-processes. It has to be unset **before** the kernel starts, which is why
-`tunnel.sbatch` does it and the notebook only detects it.
+one bundled in the wheel; `import torch` then dies with
+`undefined symbol: nccl...`. It is an environment variable, not a module, so
+`module purge` won't clear it — and the loader applies it at `exec`, so
+deleting it from `os.environ` affects only child processes. The scripts unset
+it before starting anything.
 
-**3. `module reset`, not `module purge`.** `purge` leaves you with nothing
-loaded, silently wiping `TMPDIR` (node-local scratch), `PROJECTDIR` and
-`SCRATCH`, after which Python and HuggingFace write temp files to `/tmp`.
-
-**4. Most modules in circulating examples are irrelevant here.** Single-node
-inference from prebuilt wheels needs no compiler, no CUDA module and no NCCL
-module. `device_map="auto"` is single-process sharding — layers sit on
-different GPUs and activations move by ordinary tensor copies, so no collective
-is ever entered. `cuda/12.6` is redundant too: `libtorch_cuda.so` has an
-`RPATH` to the wheel's own CUDA libraries, and `RPATH` beats `LD_LIBRARY_PATH`.
-The host need only supply the driver. Hence both scripts load almost nothing —
-deliberately.
+**3. Caches must be somewhere you can write, and `HF_HOME` is the one knob.**
+`datasets` (which Inspect uses to fetch benchmarks) derives its download
+location from `HF_HOME`. Point it at a *shared* cache and the download dies
+with `PermissionError` on another user's files. The serving script reads the
+model **by path** from the shared BriCS cache (`/projects/public/brics/hf`, no
+re-download), while dataset downloads go under your own `HF_HOME`.
 
 ## The model
 
-`nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16` — 88 layers mixing Mamba2
-state-space layers, some attention, and a 512-expert MoE.
-
-| | |
-|---|---|
-| Checkpoint | 247 GB (230 GiB), 50 shards |
-| Resident after load | ~225 GiB (the unused MTP head is dropped) |
-| 1 GPU / 2 GPUs | 95 / 190 GiB → doesn't fit |
-| **4 GPUs** | **380 GiB → fits**; measured 249 GiB used, ~131 GiB free |
-
-Two model-specific gotchas the notebook handles:
-
-- **Reasoning is on by default** — the chat template opens a `<think>` block,
-  so short prompts never reach an answer. Pass `enable_thinking=False`.
-- **That's a chat-template argument, not a `generate` one.** Passing it (or
-  `chat_template_kwargs`) to the pipeline raises `ValueError`. Render with
-  `apply_chat_template` first, then generate from the string.
-
-The **"fast path is not available"** warning is expected: `mamba-ssm` and
-`causal-conv1d` have no ARM wheels, so `transformers` falls back to a correct
-pure-PyTorch path. That's also why the notebook leaves `trust_remote_code` off
-— the checkpoint's bundled code hard-requires `mamba_ssm`, the native
-implementation doesn't.
+`openai/gpt-oss-120b` — a 120B mixture-of-experts model, MXFP4-quantised to
+~70 GB, so it fits comfortably on one node's four GH200s and loads in about
+four minutes. It is served straight from the shared BriCS cache using the
+tutorial's `GPT-OSS_Hopper.yaml` config. vLLM applies the chat template server
+side; Inspect's `openai-api` provider drives it over the standard chat
+completions API.
 
 ## Worth knowing
 
-- **Jobs are capped at 24 hours.** Hard — the job dies at `24:00:00` and takes
-  your tunnel with it. Save to project storage, not the node.
+- **Jobs are capped at 24 hours.** The tunnel (and the server running inside it)
+  dies at the job's walltime, and the endpoint goes with it.
 - **The cluster runs near capacity.** Smaller, shorter requests schedule sooner.
-- **Check for a shared model cache** before downloading; the project quota is
-  shared.
+- **Stop the server (Ctrl-C) when idle** — it holds four GPUs.
 
 Based on the official
-[VS Code tunnel guide](https://docs.isambard.ac.uk/user-documentation/guides/vscode/).
+[distributed-inference](https://docs.isambard.ac.uk/user-documentation/tutorials/distributed-inference/)
+and [VS Code tunnel](https://docs.isambard.ac.uk/user-documentation/guides/vscode/)
+guides.
