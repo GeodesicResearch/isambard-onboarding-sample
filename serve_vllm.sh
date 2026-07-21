@@ -21,7 +21,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
 if [[ ! -x "$REPO_DIR/.venv/bin/vllm" ]]; then
-    echo "ERROR: no vLLM at $REPO_DIR/.venv -- run 'bash setup_environment.sh' first." >&2
+    echo "ERROR: no vLLM at $REPO_DIR/.venv -- run 'bash setup_compute_node.sh' first." >&2
     exit 1
 fi
 

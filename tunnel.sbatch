@@ -5,7 +5,7 @@
 # Based on the official guide:
 #   https://docs.isambard.ac.uk/user-documentation/guides/vscode/
 #
-#   RUN setup_environment.sh FIRST -- it installs the VS Code CLI that the
+#   RUN setup_login_node.sh FIRST -- it installs the VS Code CLI that the
 #   last line of this script executes. See README.md "Quick start".
 #
 # Usage:
@@ -95,10 +95,11 @@ if [[ ! -x "$VSCODE_CLI" ]]; then
     echo "ERROR: no VS Code CLI at $VSCODE_CLI" >&2
     echo "" >&2
     echo "Run this first, from a login node:" >&2
-    echo "    bash setup_environment.sh" >&2
+    echo "    bash setup_login_node.sh" >&2
     echo "" >&2
-    echo "It installs the arm64 VS Code CLI (Isambard is ARM -- the x64 build" >&2
-    echo "will not run) along with the Python environment." >&2
+    echo "It installs the arm64 VS Code CLI (Isambard is ARM -- the x64" >&2
+    echo "build will not run). The GPU env is set up later, on the compute" >&2
+    echo "node, by setup_compute_node.sh." >&2
     exit 1
 fi
 

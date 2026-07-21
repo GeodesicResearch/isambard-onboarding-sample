@@ -10,11 +10,16 @@ It builds directly on the official
 adding an evaluation layer on top.
 
 ```
-setup_environment.sh    uv venvs + vLLM + Inspect + VS Code CLI, then verify
-serve_vllm.sh           serve gpt-oss-120b as an OpenAI-compatible endpoint
-llm_playground.ipynb    point Inspect at that endpoint and run evaluations
-tunnel.sbatch           interactive VS Code session on a compute node
+setup_login_node.sh     (login node)   uv + the VS Code CLI
+tunnel.sbatch           (login node)   interactive VS Code session on a compute node
+setup_compute_node.sh   (compute node) the GPU env: vLLM + Inspect venvs
+serve_vllm.sh           (compute node) serve gpt-oss-120b as an OpenAI endpoint
+llm_playground.ipynb    (compute node) point Inspect at that endpoint and evaluate
 ```
+
+Setup is split by where it runs: `setup_login_node.sh` needs only the network,
+while `setup_compute_node.sh` builds the GPU environment where a real driver is
+visible (so `--torch-backend=auto` picks the right torch).
 
 ## The shape of it
 
@@ -42,8 +47,8 @@ which is fine precisely because they only talk HTTP:
 ## Quick start
 
 ```bash
-# 1. On a LOGIN node -- build both venvs + install the VS Code CLI.
-bash setup_environment.sh
+# 1. On a LOGIN node -- install uv + the VS Code CLI.
+bash setup_login_node.sh
 
 # 2. Get an interactive session on a compute node.
 sbatch tunnel.sbatch
@@ -53,10 +58,13 @@ tail -f logs/code_tunnel_<JOB_ID>.out   # GitHub device code, then a vscode.dev 
 Connect to the tunnel, then in a terminal on the compute node:
 
 ```bash
-# 3. Serve the model (foreground -- keep this terminal open, or use tmux).
+# 3. Build the GPU environment (two venvs). Needs the compute node's driver.
+bash setup_compute_node.sh
+
+# 4. Serve the model (foreground -- keep this terminal open, or use tmux).
 bash serve_vllm.sh                      # wait for "Application startup complete"
 
-# 4. From ANOTHER terminal, run the evals:
+# 5. From ANOTHER terminal, run the evals:
 export ISAMBARD_BASE_URL=$(cat endpoint.txt) ISAMBARD_API_KEY=dummy
 .venv-eval/bin/inspect eval inspect_evals/gsm8k \
     --model openai-api/isambard/gpt-oss-120b --limit 10

@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 # ===========================================================================
-#  Isambard onboarding sample -- environment setup.
+#  Isambard onboarding sample -- COMPUTE-node setup (step 2 of 2).
 #
-#      bash setup_environment.sh
+#      bash setup_compute_node.sh
 #
-#  Builds a Python environment that can serve an LLM with vLLM and evaluate it
-#  with the UK AISI Inspect framework, then installs the VS Code CLI so you can
-#  work in a tunnel. Follows the official Isambard distributed-inference
-#  tutorial's install recipe:
+#  Builds the GPU environment: two Python venvs (vLLM for serving, Inspect for
+#  evaluating) and registers the eval kernel for VS Code. Run this INSIDE a
+#  compute-node session -- e.g. a VS Code tunnel from tunnel.sbatch -- so that
+#  `--torch-backend=auto` sees the real GPU driver and the verification at the
+#  end can check the GPUs. (Run setup_login_node.sh first.)
+#
+#  Follows the official Isambard distributed-inference tutorial's install recipe:
 #    https://docs.isambard.ac.uk/user-documentation/tutorials/distributed-inference/
-#
-#  Run it on a LOGIN node first (the GPU check at the end is skipped there),
-#  then again inside a compute-node session to verify the GPUs. Safe to re-run.
+#  Safe to re-run.
 # ===========================================================================
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
-echo "=== Isambard onboarding sample: environment setup ==="
+echo "=== Isambard onboarding sample: compute-node setup ==="
 echo "repo: $REPO_DIR"
-echo ""
 
 # ---------------------------------------------------------------------------
 # 1. Modules
@@ -29,11 +29,11 @@ echo ""
 # silently wipes TMPDIR/PROJECTDIR/SCRATCH. `brics/nccl` provides the NCCL vLLM
 # needs on this fabric -- it is the one module the tutorial loads.
 if command -v module &>/dev/null; then
-    echo "[1/4] module reset + brics/nccl"
+    echo "[1/3] module reset + brics/nccl"
     module reset 2>/dev/null || true
     module load brics/nccl 2>/dev/null || true
 else
-    echo "[1/4] no module command -- skipping (fine off-cluster)"
+    echo "[1/3] no module command -- skipping (fine off-cluster)"
 fi
 
 # LD_PRELOAD pointing at the system NCCL breaks `import torch` with
@@ -42,20 +42,14 @@ fi
 # in the shell before Python starts, not from inside it.
 unset LD_PRELOAD || true
 
-# ---------------------------------------------------------------------------
-# 2. uv
-# ---------------------------------------------------------------------------
 export PATH="$HOME/.local/bin:$PATH"
-if command -v uv &>/dev/null; then
-    echo "[2/4] uv present: $(uv --version)"
-else
-    echo "[2/4] installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    echo "      (add ~/.local/bin to PATH in ~/.bashrc to persist this)"
+if ! command -v uv &>/dev/null; then
+    echo "ERROR: uv not found. Run 'bash setup_login_node.sh' first." >&2
+    exit 1
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Two Python environments
+# 2. Two Python environments
 # ---------------------------------------------------------------------------
 # The serving stack and the evaluation stack have INCOMPATIBLE dependencies:
 # vLLM 0.15.1 pins transformers to a version needing huggingface-hub <1.0,
@@ -73,8 +67,9 @@ fi
 # CUDA-13 wheels that need a newer driver and die at runtime with
 # "libcudart.so.13". `--torch-backend=auto` detects the driver and picks a
 # compatible torch (here 2.9.x +cu129); vLLM comes from its own wheel index.
-# This is exactly the official tutorial's install line.
-echo "[3/4] creating serving venv (.venv) -- pulls several GB the first time"
+# This is exactly the official tutorial's install line -- and detecting the
+# driver is why this step belongs on a compute node.
+echo "[2/3] creating serving venv (.venv) -- pulls several GB the first time"
 uv venv --seed --python=3.12 .venv
 VIRTUAL_ENV="$REPO_DIR/.venv" uv pip install --python "$REPO_DIR/.venv/bin/python" \
     "vllm[flashinfer]==0.15.1" \
@@ -91,39 +86,17 @@ VIRTUAL_ENV="$REPO_DIR/.venv-eval" uv pip install --python "$REPO_DIR/.venv-eval
 
 # Register the eval venv as a named Jupyter kernel so VS Code (and jupyter lab)
 # offer it in the kernel picker out of the box -- no need to hunt for the venv
-# path. The notebook's saved metadata already points at this name, so opening
-# llm_playground.ipynb selects it automatically.
+# path.
 "$REPO_DIR/.venv-eval/bin/python" -m ipykernel install --user \
     --name isambard-eval \
     --display-name "Python (.venv-eval — Isambard eval)"
 
 # ---------------------------------------------------------------------------
-# 4. VS Code CLI (so tunnel.sbatch can run)
+# 3. Verify
 # ---------------------------------------------------------------------------
-# Self-contained arm64 build -- note "cli-alpine-arm64"; the x64 build is the
-# usual first mistake on Isambard.
-VSCODE_CLI_DIR="$HOME/opt/vscode_cli"
-if [[ -x "$VSCODE_CLI_DIR/code" ]]; then
-    echo "[4/4] VS Code CLI present: $("$VSCODE_CLI_DIR/code" --version 2>/dev/null | head -1)"
-else
-    echo "[4/4] installing VS Code CLI (arm64)..."
-    mkdir -p "$VSCODE_CLI_DIR"
-    tmp_tgz="$(mktemp -t vscode_cli.XXXXXX.tar.gz)"
-    curl -Lsf --output "$tmp_tgz" \
-        "https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-arm64"
-    tar -C "$VSCODE_CLI_DIR" --extract --file "$tmp_tgz"
-    rm -f "$tmp_tgz"
-    echo "      installed: $("$VSCODE_CLI_DIR/code" --version 2>/dev/null | head -1)"
-fi
-mkdir -p logs
-
-# ---------------------------------------------------------------------------
-# Verify
-# ---------------------------------------------------------------------------
-echo ""
-echo "=== verification ==="
+echo "[3/3] verifying"
 set +e
-# Serving venv: vLLM + a CUDA-12 torch.
+# Serving venv: vLLM + a CUDA-12 torch, and the GPUs are visible here.
 "$REPO_DIR/.venv/bin/python" - <<'PY'
 import importlib.metadata as md, sys, torch
 print(f"[.venv]      vllm  {md.version('vllm')}   torch {torch.__version__}")
@@ -133,7 +106,7 @@ if "+cu" not in torch.__version__ or (torch.version.cuda or "").split(".")[0] !=
 if torch.cuda.is_available():
     print(f"             CUDA {torch.version.cuda}  |  GPUs {torch.cuda.device_count()}")
 else:
-    print("             no GPU (expected on a login node)")
+    print("             WARNING: no GPU visible -- are you on a compute node?")
 PY
 rc=$?
 # Eval venv: Inspect, no GPU stack.
@@ -148,7 +121,7 @@ set -e
 cat <<EOF
 
 === done ===
-Next (inside a compute-node session, e.g. a VS Code tunnel):
+Next (on this compute node):
   bash serve_vllm.sh                # serve gpt-oss-120b; writes endpoint.txt
   # then, from another terminal, open llm_playground.ipynb (.venv-eval kernel)
 EOF
