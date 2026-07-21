@@ -7,3 +7,4 @@ logs/*
 !logs/.gitkeep
 __pycache__/
 .ipynb_checkpoints/
+endpoint.txt

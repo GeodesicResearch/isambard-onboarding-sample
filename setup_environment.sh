@@ -89,6 +89,14 @@ VIRTUAL_ENV="$REPO_DIR/.venv-eval" uv pip install --python "$REPO_DIR/.venv-eval
     openai \
     "ipykernel>=6.29" "jupyterlab>=4.2" "ipywidgets>=8.1"
 
+# Register the eval venv as a named Jupyter kernel so VS Code (and jupyter lab)
+# offer it in the kernel picker out of the box -- no need to hunt for the venv
+# path. The notebook's saved metadata already points at this name, so opening
+# llm_playground.ipynb selects it automatically.
+"$REPO_DIR/.venv-eval/bin/python" -m ipykernel install --user \
+    --name isambard-eval \
+    --display-name "Python (.venv-eval — Isambard eval)"
+
 # ---------------------------------------------------------------------------
 # 4. VS Code CLI (so tunnel.sbatch can run)
 # ---------------------------------------------------------------------------
